@@ -1,0 +1,152 @@
+diff --git a/decode.cpp b/decode.cpp
+index 0132e1a..6a3a123 100644
+--- a/decode.cpp
++++ b/decode.cpp
+@@ -12,6 +12,8 @@
+ 
+ #include <fstream>
+ #include <iostream>
++#include <string>
++#include <ctime>
+ 
+ #include "fit_decode.hpp"
+ #include "fit_mesg_broadcaster.hpp"
+@@ -28,58 +30,71 @@ class Listener
+ public :
+     static void PrintValues(const fit::FieldBase& field)
+     {
++        if (field.GetNumValues()>1) {
++          std::wcout << "[";
++        }
+         for (FIT_UINT8 j=0; j< (FIT_UINT8)field.GetNumValues(); j++)
+         {
+-            std::wcout << L"       Val" << j << L": ";
+-            switch (field.GetType())
+-            {
+-            // Get float 64 values for numeric types to receive values that have
+-            // their scale and offset properly applied.
+-            case FIT_BASE_TYPE_ENUM:
+-            case FIT_BASE_TYPE_BYTE:
+-            case FIT_BASE_TYPE_SINT8:
+-            case FIT_BASE_TYPE_UINT8:
+-            case FIT_BASE_TYPE_SINT16:
+-            case FIT_BASE_TYPE_UINT16:
+-            case FIT_BASE_TYPE_SINT32:
+-            case FIT_BASE_TYPE_UINT32:
+-            case FIT_BASE_TYPE_SINT64:
+-            case FIT_BASE_TYPE_UINT64:
+-            case FIT_BASE_TYPE_UINT8Z:
+-            case FIT_BASE_TYPE_UINT16Z:
+-            case FIT_BASE_TYPE_UINT32Z:
+-            case FIT_BASE_TYPE_UINT64Z:
+-            case FIT_BASE_TYPE_FLOAT32:
+-            case FIT_BASE_TYPE_FLOAT64:
+-                std::wcout << field.GetFLOAT64Value(j);
+-                break;
+-            case FIT_BASE_TYPE_STRING:
+-                std::wcout << field.GetSTRINGValue(j);
+-                break;
+-            default:
+-                break;
+-            }
+-            std::wcout << L" " << field.GetUnits().c_str() << L"\n";;
++           if (j>0) std::wcout << ",";
++           if (field.GetName().compare("timestamp") == 0) {
++             time_t t = static_cast<time_t> (field.GetUINT32Value(0));
++             struct tm *ptm = gmtime(&t);
++             std::wcout << "\"" << (ptm->tm_year + 1920) << "-"
++                        << ((ptm->tm_mon<9)?"0":"") << (ptm->tm_mon+1) << "-"
++                        << ((ptm->tm_mday<10)?"0":"") << ptm->tm_mday
++                        << "T"
++                        <<        ((ptm->tm_hour<10)?"0":"") << ptm->tm_hour
++                        << ":" << ((ptm->tm_min<10)?"0":"") << ptm->tm_min
++                        << ":" << ((ptm->tm_sec<10)?"0":"") << ptm->tm_sec << "\"";
++           } else {
++             switch (field.GetType())
++              {
++              // Get float 64 values for numeric types to receive values that have
++              // their scale and offset properly applied.
++              case FIT_BASE_TYPE_ENUM:
++              case FIT_BASE_TYPE_BYTE:
++              case FIT_BASE_TYPE_SINT8:
++              case FIT_BASE_TYPE_UINT8:
++              case FIT_BASE_TYPE_SINT16:
++              case FIT_BASE_TYPE_UINT16:
++              case FIT_BASE_TYPE_SINT32:
++              case FIT_BASE_TYPE_UINT32:
++              case FIT_BASE_TYPE_SINT64:
++              case FIT_BASE_TYPE_UINT64:
++              case FIT_BASE_TYPE_UINT8Z:
++              case FIT_BASE_TYPE_UINT16Z:
++              case FIT_BASE_TYPE_UINT32Z:
++              case FIT_BASE_TYPE_UINT64Z:
++                  std::wcout << field.GetUINT64Value(j);
++                  break;
++              case FIT_BASE_TYPE_FLOAT32:
++              case FIT_BASE_TYPE_FLOAT64:
++                  std::wcout << field.GetFLOAT64Value(j);
++                  break;
++              case FIT_BASE_TYPE_STRING:
++                  std::wcout << "\"" << field.GetSTRINGValue(j) << "\"";
++                  break;
++              default:
++                  break;
++              }
++           }
++        }
++        if (field.GetNumValues()>1) {
++          std::wcout << "]";
+         }
+     }
+ 
+     void OnMesg(fit::Mesg& mesg) override
+     {
+-        printf("On Mesg:\n");
+-        std::wcout << L"   New Mesg: " << mesg.GetName().c_str() << L".  It has " << mesg.GetNumFields() << L" field(s) and " << mesg.GetNumDevFields() << " developer field(s).\n";
+-
++        std::wcout << "{";
+         for (FIT_UINT16 i = 0; i < (FIT_UINT16)mesg.GetNumFields(); i++)
+         {
++            if (i>0) std::wcout <<",";
+             fit::Field* field = mesg.GetFieldByIndex(i);
+-            std::wcout << L"   Field" << i << " (" << field->GetName().c_str() << ") has " << field->GetNumValues() << L" value(s)\n";
++            std::wcout << L"\"" << field->GetName().c_str() << "\":";
+             PrintValues(*field);
+         }
+-
+-        for (auto devField : mesg.GetDeveloperFields())
+-        {
+-            std::wcout << L"   Developer Field(" << devField.GetName().c_str() << ") has " << devField.GetNumValues() << L" value(s)\n";
+-            PrintValues(devField);
+-        }
++        std::wcout << "}\n";
+     }
+ 
+    void OnMesg(fit::FileIdMesg& mesg) override
+@@ -198,7 +213,6 @@ int main(int argc, char* argv[])
+    Listener listener;
+    std::fstream file;
+ 
+-   printf("FIT Decode Example Application\n");
+ 
+    if (argc != 2)
+    {
+@@ -220,10 +234,6 @@ int main(int argc, char* argv[])
+       return -1;
+    }
+ 
+-   mesgBroadcaster.AddListener((fit::FileIdMesgListener &)listener);
+-   mesgBroadcaster.AddListener((fit::UserProfileMesgListener &)listener);
+-   mesgBroadcaster.AddListener((fit::MonitoringMesgListener &)listener);
+-   mesgBroadcaster.AddListener((fit::DeviceInfoMesgListener &)listener);
+    mesgBroadcaster.AddListener((fit::MesgListener &)listener);
+ 
+    try
+@@ -236,7 +246,6 @@ int main(int argc, char* argv[])
+       return -1;
+    }
+ 
+-   printf("Decoded FIT file %s.\n", argv[1]);
+ 
+    return 0;
+ }
